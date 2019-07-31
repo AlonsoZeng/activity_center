@@ -1,0 +1,7 @@
+﻿$axure.loadCurrentPage(
+(function() {
+    var _ = function() { var r={},a=arguments; for(var i=0; i<a.length; i+=2) r[a[i]]=a[i+1]; return r; }
+    var _creator = function() { return _(b,c,d,e,f,g,h,g,i,[j],k,_(l,m,n,o,p,q,r,_(),s,_(t,u,v,w,x,_(y,z,A,B),C,null,D,w,E,w,F,G,H,null,I,J,K,L,M,N,O,J),P,_(),Q,_(R,_(S,T,U,[_(S,V,W,g,X,[_(Y,Z,S,ba,bb,_(bc,bd,be,_(bf,bg,bh,bi,bj,[]),bk,g),bl,bm)])])),bn,_(bo,[])),bp,_(),bq,_());}; 
+var b="url",c="编辑页面演示.html",d="generationDate",e=new Date(1564569596642.95),f="isCanvasEnabled",g=false,h="isAdaptiveEnabled",i="variables",j="OnLoadVariable",k="page",l="packageId",m="0e9b27bc0c15420486b8e1e30b56aa2d",n="type",o="Axure:Page",p="name",q="编辑页面演示",r="notes",s="style",t="baseStyle",u="627587b6038d43cca051c114ac41ad32",v="pageAlignment",w="near",x="fill",y="fillType",z="solid",A="color",B=0xFFFFFFFF,C="image",D="imageHorizontalAlignment",E="imageVerticalAlignment",F="imageRepeat",G="auto",H="favicon",I="sketchFactor",J="0",K="colorStyle",L="appliedColor",M="fontName",N="Applied Font",O="borderWidth",P="adaptiveStyles",Q="interactionMap",R="onLoad",S="description",T="OnPageLoad",U="cases",V="Case 1",W="isNewIfGroup",X="actions",Y="action",Z="linkWindow",ba="Open https://yangyuji.github.io/h5-factory/ in Current Window",bb="target",bc="targetType",bd="webUrl",be="urlLiteral",bf="exprType",bg="stringLiteral",bh="value",bi="https://yangyuji.github.io/h5-factory/",bj="stos",bk="includeVariables",bl="linkType",bm="current",bn="diagram",bo="objects",bp="masters",bq="objectPaths";
+return _creator();
+})());
