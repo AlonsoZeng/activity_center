@@ -232,20 +232,20 @@ $axure.internal(function($ax) {
         if(!info || info.active == active) return;
         info.active = active;
 
-        if(active) var value = info.text;
-        else if(!ANDROID) value = clearText ? '' : document.getElementById(inputId).value;
+        if(active) var text = info.text;
+        else if(!ANDROID) text = clearText ? '' : document.getElementById(inputId).value;
         else {
             var currentText = document.getElementById(inputId).value;
-            if(!clearText) value = currentText;
-            else if(currentText == info.text) value = "";
+            if(!clearText) text = currentText;
+            else if(currentText == info.text) text = "";
             else {
                 var lastIndex = currentText.lastIndexOf(info.text);
                 //here i am assuming the text is always inserted in front
-                value = currentText.substring(0, lastIndex);
+                text = currentText.substring(0, lastIndex);
             }
         }
 
-        $ax.style.SetWidgetPlaceholder(elementId, active, value, info.password);
+        $ax.style.SetWidgetPlaceholder(elementId, active, text, info.password);
     };
     _placeholderManager.updatePlaceholder = _updatePlaceholder;
 

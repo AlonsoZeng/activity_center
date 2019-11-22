@@ -23,6 +23,8 @@ $axure.internal(function($ax) {
             var objScriptIds = obj.scriptIds;
             for(var j = 0; j < objScriptIds.length; j++) {
                 var scriptId = objScriptIds[j];
+                // Anything in a layer is already handled by the layer
+                if($ax.getLayerParentFromElementId(scriptId)) continue;
 
                 // Make sure in same rdo
                 var elementPath = $ax.getPathFromScriptId(scriptId);

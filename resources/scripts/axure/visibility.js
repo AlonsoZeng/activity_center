@@ -83,6 +83,17 @@
             options.onComplete = function () {
                 if(complete) complete();
                 _popContainer(elementId, isPanel);
+                //using containers stops mouseleave from firing on IE/Edge and FireFox
+                if(!options.value && $ax.event.mouseOverObjectId && (FIREFOX || $axure.browser.isEdge || IE)) {
+                    var mouseOveredElement = $('#' + $ax.event.mouseOverObjectId);
+                    if(mouseOveredElement && !mouseOveredElement.is(":visible")) {
+                        var axObj = $obj($ax.event.mouseOverObjectId);
+
+                        if(($ax.public.fn.IsDynamicPanel(axObj.type) || $ax.public.fn.IsLayer(axObj.type)) && axObj.propagate) {
+                            mouseOveredElement.trigger('mouseleave');
+                        } else mouseOveredElement.trigger('mouseleave.ixStyle');
+                    }
+                }
                 //after showing dp, restore the scoll position
                 if(isPanel && options.value) _tryResumeScrollForDP(elementId, true);
             }
@@ -128,7 +139,7 @@
             var sizeId = '';
             if($ax.dynamicPanelManager.isIdFitToContent(childId)) sizeId = childId;
             else {
-                var panelId = $ax.repeater.removeSuffixFromElementId(childId)[0];
+                var panelId = $ax.repeater.removeSuffixFromElementId(childId);
                 if($ax.dynamicPanelManager.isIdFitToContent(panelId)) sizeId = panelId;
             }
 
@@ -152,8 +163,9 @@
                 var containerWidth = axCull.width();
                 var containerHeight = axCull.height();
             } else {
-                if(childObj && ($ax.public.fn.IsLayer(childObj.type))) {// || childObj.generateCompound)) {
-                    var boundingRectangle = $ax.public.fn.getWidgetBoundingRect(childId);
+                if (childObj && ($ax.public.fn.IsLayer(childObj.type))) {// || childObj.generateCompound)) {
+                    var boundingRectangle = $ax('#' + childId).offsetBoundingRect();
+                    //var boundingRectangle = $ax.public.fn.getWidgetBoundingRect(childId);
                     wrappedOffset.left = boundingRectangle.left;
                     wrappedOffset.top = boundingRectangle.top;
                     containerWidth = boundingRectangle.width;
@@ -202,7 +214,7 @@
             if (options.value && options.containInner) {
                 //has to set children first because flip to show needs children invisible
                 _setAllVisible(visibleWrapped, false);
-                _updateChildAlignment(childId);
+                //_updateChildAlignment(childId);
                 _setAllVisible(child, true);
             }
         }
@@ -216,13 +228,18 @@
                     wrappedOffset.top = $ax.getNumFromPx(container.css('top'));
                 }
 
-                if (options.containInner && !containerExists && (wrappedOffset.left != 0 || wrappedOffset.top != 0)) {
-                    for (i = 0; i < wrapped.length; i++) {
-                        inner = $(wrapped[i]);
-                        //if ($ax.public.fn.isCompoundVectorComponentHtml(inner[0])) break;
-                        inner.css('left', $ax.getNumFromPx(inner.css('left')) + wrappedOffset.left);
-                        inner.css('top', $ax.getNumFromPx(inner.css('top')) + wrappedOffset.top);
+                if (options.containInner && !containerExists) {
+                    if (wrappedOffset.left != 0 || wrappedOffset.top != 0) {
+                        for (i = 0; i < wrapped.length; i++) {
+                            inner = $(wrapped[i]);
+                            if (!inner.hasClass('text')) {
+                                inner.css('left', $ax.getNumFromPx(inner.css('left')) + wrappedOffset.left);
+                                inner.css('top', $ax.getNumFromPx(inner.css('top')) + wrappedOffset.top);
+                            }
+                        }
                     }
+
+                    wrapped.filter('.text').css({ 'left': '', 'top': '' });
                 }
 
                 if(options.containInner && !options.value) {
@@ -243,7 +260,7 @@
                 }
             }
 
-            if(options.value) _updateChildAlignment(childId);
+            //if(options.value) _updateChildAlignment(childId);
 
             if(!needContainer || completeTotal == completeCount) {
                 if(options.cull) options.cull.css('position', cullPosition);
@@ -320,13 +337,15 @@
             }
         } else if (options.easing == 'flip') {
             //this container will hold 
+            var trapScroll = _trapScrollLoc(childId);
             var innerContainer = $('<div></div>');
             innerContainer.attr('id', containerId + "_inner");
             innerContainer.data('flip', options.direction == 'left' || options.direction == 'right' ? 'y' : 'x');
             innerContainer.css({
                 position: 'relative',
                 'width': containerWidth,
-                'height': containerHeight
+                'height': containerHeight,
+                'display': 'flex'
             });
 
             innerContainer.appendTo(container);
@@ -337,40 +356,37 @@
 
             completeTotal = 1;
             var flipdegree;
-            var requestAnimFrame = window.requestAnimationFrame ||
-                window.webkitRequestAnimationFrame ||
-                window.mozRequestAnimationFrame || window.msRequestAnimationFrame ||
-                function (callback) {
-                    window.setTimeout(callback, 1000 / 60);
-                };
 
-            var originForUpOrDown = '100% ' + containerHeight / 2 + 'px';
-            if(options.value) {
-                //options.value == true means in or show, note to get here, the element must be currently hidden
-                //to show, we need to first flip it 180deg without animation
+            var originForFlip = containerWidth / 2 + 'px ' + containerHeight / 2 + 'px';
+            if (options.value) {
+                innerContainer.css({
+                    '-webkit-transform-origin': originForFlip,
+                    '-ms-transform-origin': originForFlip,
+                    'transform-origin': originForFlip,
+                });
+
+                //options.value == true means in or show, note to get here, the element must be currently hidden to show,
+                // we need to first flip it +/- 90deg without animation (180 if we want to show the back of the flip)
                 switch(options.direction) {
                     case 'right':
                     case 'left':
-                        _setRotateTransformation(innerContainer, 'rotateY(180deg)');
-                    flipdegree = options.direction === 'right' ? 'rotateY(360deg)' : 'rotateY(0deg)';
-                    break;
+                        _setRotateTransformation(innerContainer, _getRotateString(true, options.direction === 'right', options.showFlipBack));
+                        flipdegree = 'rotateY(0deg)';
+                        break;
                     case 'up':
                     case 'down':
-                    innerContainer.css({
-                        '-webkit-transform-origin': originForUpOrDown,
-                        '-ms-transform-origin': originForUpOrDown,
-                        'transform-origin': originForUpOrDown,
-                    });
-                    _setRotateTransformation(innerContainer, 'rotateX(180deg)');
-                    flipdegree = options.direction === 'up' ? 'rotateX(360deg)' : 'rotateX(0deg)';
-                    break;
+                        _setRotateTransformation(innerContainer, _getRotateString(false, options.direction === 'up', options.showFlipBack));
+                        flipdegree = 'rotateX(0deg)';
+                        break;
                 }
 
                 var onFlipShowComplete = function() {
+                    var trapScroll = _trapScrollLoc(childId);
                     $ax.visibility.SetIdVisible(childId, true);
 
                     wrapped.insertBefore(innerContainer);
                     innerContainer.remove();
+                    trapScroll();
 
                     onComplete();
                 };
@@ -396,32 +412,31 @@
                 });
 
                 if(preserveScroll) _tryResumeScrollForDP(childId);
-                requestAnimFrame(function () {
-                    _setRotateTransformation(innerContainer, flipdegree, containerDiv, onFlipShowComplete, options.duration);
-                });
+                _setRotateTransformation(innerContainer, flipdegree, containerDiv, onFlipShowComplete, options.duration, true);
             } else { //hide or out
+                innerContainer.css({
+                    '-webkit-transform-origin': originForFlip,
+                    '-ms-transform-origin': originForFlip,
+                    'transform-origin': originForFlip,
+                });
                 switch(options.direction) {
                     case 'right':
                     case 'left':
-                        flipdegree = options.direction === 'right' ? 'rotateY(180deg)' : 'rotateY(-180deg)';
+                        flipdegree = _getRotateString(true, options.direction !== 'right', options.showFlipBack);
                         break;
                     case 'up':
                     case 'down':
-                        //_setRotateTransformation(wrapped, 'rotateX(0deg)');
-                        innerContainer.css({
-                            '-webkit-transform-origin': originForUpOrDown,
-                            '-ms-transform-origin': originForUpOrDown,
-                            'transform-origin': originForUpOrDown,
-                        });
-                        flipdegree = options.direction === 'up' ? 'rotateX(180deg)' : 'rotateX(-180deg)';
-                    break;
+                        flipdegree = _getRotateString(false, options.direction !== 'up', options.showFlipBack);
+                        break;
                 }
 
                 var onFlipHideComplete = function() {
+                    var trapScroll = _trapScrollLoc(childId);
                     wrapped.insertBefore(innerContainer);
                     $ax.visibility.SetIdVisible(childId, false);
 
                     innerContainer.remove();
+                    trapScroll();
 
                     onComplete();
                 };
@@ -434,10 +449,10 @@
                 });
 
                 if(preserveScroll) _tryResumeScrollForDP(childId);
-                requestAnimFrame(function () {
-                    _setRotateTransformation(innerContainer, flipdegree, containerDiv, onFlipHideComplete, options.duration);
-                });
+                _setRotateTransformation(innerContainer, flipdegree, containerDiv, onFlipHideComplete, options.duration, true);
             }
+
+            trapScroll();
         } else {
             // Because the move is gonna fire on annotation and ref too, need to update complete total
             completeTotal = $addAll(visibleWrapped, childId).length;
@@ -448,8 +463,9 @@
                 var lefts = [];
                 for(var i = 0; i < visibleWrapped.length; i++) {
                     var currWrapped = $(visibleWrapped[i]);
-                    tops.push(currWrapped.css('top'));
-                    lefts.push(currWrapped.css('left'));
+                    
+                    tops.push(fixAuto(currWrapped, 'top'));
+                    lefts.push(fixAuto(currWrapped, 'left'));
                 }
 
                 var onOutComplete = function () {
@@ -457,7 +473,7 @@
                     $ax.visibility.SetIdVisible(childId, false);
                     for(i = 0; i < visibleWrapped.length; i++) {
                         currWrapped = $(visibleWrapped[i]);
-                        $ax.visibility.SetIdVisible(currWrapped.attr('id'), false);
+                        $ax.visibility.SetVisible(currWrapped[0], false);
                         currWrapped.css('top', tops[i]);
                         currWrapped.css('left', lefts[i]);
                     }
@@ -468,21 +484,27 @@
         }
 
         // If showing, go through all rich text objects inside you, and try to redo alignment of them
-        if(options.value && !options.containInner) {
-            _updateChildAlignment(childId);
-        }
+        //if(options.value && !options.containInner) {
+        //    _updateChildAlignment(childId);
+        //}
     };
 
-    var _updateChildAlignment = function(childId) {
-        var descendants = $jobj(childId).find('*');
-        for(var i = 0; i < descendants.length; i++) {
-            var decendantId = descendants[i].id;
-            // This check is probably redundant? UpdateTextAlignment should ignore any text objects that haven't set the vAlign yet.
-            if($ax.getTypeFromElementId(decendantId) != 'richTextPanel') continue;
-            $ax.style.updateTextAlignmentForVisibility(decendantId);
-        }
+    // IE/Safari are giving auto here instead of calculating to for us. May need to calculate this eventually, but for now we can assume auto === 0px for the edge case found
+    var fixAuto = function (jobj, prop) {
+        var val = jobj.css(prop);
+        return val == 'auto' ? '0px' : val;
     };
 
+    var _getRotateString = function (y, neg, showFlipBack) {
+        // y means flip on y axis, or left/right, neg means flipping it left/down, and show back is for set panel state
+        //  and will show the back of the widget (transparent) for the first half of a show, or second half of a hide.
+        return 'rotate' + (y ? 'Y' : 'X') + '(' + (neg ? '-' : '') + (showFlipBack ? 180 : IE ? 91 : 90) + 'deg)';
+    }
+
+    //var _updateChildAlignment = function(childId) {
+    //    var descendants = $jobj(childId).find('.text');
+    //    for(var i = 0; i < descendants.length; i++) $ax.style.updateTextAlignmentForVisibility(descendants[i].id);
+    //};
     var _wrappedChildren = function (child) {
         return child.children();
         //var children = child.children();
@@ -491,20 +513,34 @@
         //return $(valid);
     };
 
-    var _setRotateTransformation = function(elementsToSet, transformValue, elementParent, flipCompleteCallback, flipDurationMs) {
+    var requestAnimationFrame = window.requestAnimationFrame ||
+        window.webkitRequestAnimationFrame ||
+        window.mozRequestAnimationFrame || window.msRequestAnimationFrame ||
+        function (callback) {
+            window.setTimeout(callback, 1000 / 60);
+        };
+
+    var _setRotateTransformation = function(elementsToSet, transformValue, elementParent, flipCompleteCallback, flipDurationMs, useAnimationFrame) {
         if(flipCompleteCallback) {
             //here we didn't use 'transitionend' event to fire callback
             //when show/hide on one element, changing transition property will stop the event from firing
             window.setTimeout(flipCompleteCallback, flipDurationMs);
         }
 
-        elementsToSet.css({
+        var trasformCss = {
             '-webkit-transform': transformValue,
             '-moz-transform': transformValue,
             '-ms-transform': transformValue,
             '-o-transform': transformValue,
             'transform': transformValue
-        });
+        };
+
+        if(useAnimationFrame) {
+            if(FIREFOX || CHROME) $('body').hide().show(0); //forces FF to render the animation            
+            requestAnimationFrame(function() {
+                elementsToSet.css(trasformCss);
+            });
+        } else elementsToSet.css(trasformCss);
 
         //when deal with dynamic panel, we need to set it's parent's overflow to visible to have the 3d effect
         //NOTE: we need to set this back when both flips finishes in DP, to prevents one animation finished first and set this back
@@ -529,26 +565,45 @@
 
         // Exit here if already at desired state.
         if($ax.visibility.IsIdVisible(stateId)) {
-            if(show) $ax.event.raiseSyntheticEvent(id, 'onShow');
+            if(show) {
+                $ax.event.raiseSyntheticEvent(id, 'onShow');
+                // If showing size changes and need to update parent panels
+                $ax.dynamicPanelManager.fitParentPanel(id);
+            }
+
             $ax.action.fireAnimationFromQueue(id, $ax.action.queueTypes.setState);
             return;
         }
 
-        _pushContainer(id, true);
+        var hasEasing = easingIn != 'none' || easingOut != 'none';
+        if(hasEasing) _pushContainer(id, true);
 
         var state = $jobj(stateId);
         var oldStateId = $ax.visibility.GetPanelState(id);
         var oldState = $jobj(oldStateId);
-        //pin to browser
-        $ax.dynamicPanelManager.adjustFixed(id, oldState.width(), oldState.height(), state.width(), state.height());
 
-        _bringPanelStateToFront(id, stateId);
+        var isFixed = $jobj(id).css('position') == 'fixed';
+        //pin to browser
+        if(isFixed) $ax.dynamicPanelManager.adjustFixed(id, oldState.width(), oldState.height(), state.width(), state.height());
+
+        _bringPanelStateToFront(id, stateId, oldStateId, easingIn == 'none' || durationIn == '0');
 
         var fitToContent = $ax.dynamicPanelManager.isIdFitToContent(id);
         var resized = false;
         if(fitToContent) {
             // Set resized
-            resized = state.width() != oldState.width() || state.height() != oldState.height();
+            //var width = state.width();
+            //var height = state.height();
+            var newBoundingRect = $ax('#' + stateId).childrenBoundingRect();
+            var width = newBoundingRect.right;
+            var height = newBoundingRect.bottom;
+            var oldBoundingRect = $ax('#' + id).size();
+            var oldWidth = oldBoundingRect.right;
+            var oldHeight = oldBoundingRect.bottom;
+            resized = width != oldWidth || height != oldHeight;
+            //resized = width != oldState.width() || height != oldState.height();
+
+            $ax.visibility.setResizedSize(id, $obj(id).percentWidth ? oldWidth : width, height);
         }
 
         //edge case for sliding
@@ -558,7 +613,7 @@
             //move this call from _setVisibility() for animate out.
             //Because this will make the order of dp divs consistence: the showing panel is always in front after both animation finished
             //tested in the cases where one panel is out/show slower/faster/same time/instantly. 
-            _bringPanelStateToFront(id, stateId);
+            _bringPanelStateToFront(id, stateId, oldStateId, false);
 
             if (window.modifiedDynamicPanleParentOverflowProp) {
                 var parent = id ? $jobj(id) : child.parent();
@@ -572,7 +627,9 @@
             $ax.action.fireAnimationFromQueue(id, $ax.action.queueTypes.setState);
             $ax.event.raiseSyntheticEvent(id, "onPanelStateChange");
             $ax.event.leavingState(oldStateId);
-            _popContainer(id, true);
+            if (hasEasing) _popContainer(id, true);
+
+            $ax.dynamicPanelManager.updateMobileScroll(id, stateId);
         };
         // Must do state out first, so if we cull by new state, location is correct
         _setVisibility(id, oldStateId, {
@@ -588,7 +645,8 @@
             settingChild: true,
             size: movement,
             //cull for 
-            cull: easingOut == 'none' || state.children().length == 0 ? oldState : state
+            cull: easingOut == 'none' || state.children().length == 0 ? oldState : state,
+            showFlipBack: true
         });
 
         _setVisibility(id, stateId, {
@@ -603,7 +661,8 @@
             },
             settingChild: true,
             //size for offset
-            size: movement
+            size: movement,
+            showFlipBack: true
         });
 
         if(show) $ax.event.raiseSyntheticEvent(id, 'onShow');
@@ -615,6 +674,7 @@
         var count = containerCount[id];
         if(count) containerCount[id] = count + 1;
         else {
+            var trapScroll = _trapScrollLoc(id);
             var jobj = $jobj(id);
             var children = jobj.children();
             var css = {
@@ -624,13 +684,14 @@
             };
 
             if(!panel) {
-                var boundingRect = $axure.fn.getWidgetBoundingRect(id);
+                var boundingRect = $ax('#' + id).offsetBoundingRect();
+                //var boundingRect = $axure.fn.getWidgetBoundingRect(id);
                 css.top = boundingRect.top;
                 css.left = boundingRect.left;
             }
 
             var container = $('<div></div>');
-            container.attr('id', $ax.visibility.applyWidgetContainer(id));
+            container.attr('id', ''); // Placeholder id, so we won't try to recurse the container until it is ready
             container.css(css);
             //container.append(jobj.children());
             jobj.append(container);
@@ -649,6 +710,7 @@
                 }
             } else {
                 var focus = _getCurrFocus();
+                if(focus) $ax.event.addSuppressedEvent($ax.repeater.removeSuffixFromElementId(focus), 'OnLostFocus');
 
                 // Layer needs to fix top left
                 var childIds = $ax('#' + id).getChildren()[0].children;
@@ -658,8 +720,11 @@
                     var fixedInfo = $ax.dynamicPanelManager.getFixedInfo(childId);
                     if(fixedInfo.fixed) {
                         var axObj = $ax('#' + childId);
-                        var left = axObj.left();
-                        var top = axObj.top();
+                        var viewportLocation = axObj.viewportLocation();
+                        var left = viewportLocation.left;
+                        var top = viewportLocation.top;
+                        //var left = axObj.left();
+                        //var top = axObj.top();
                         containedFixed[childId] = { left: left, top: top, fixed: fixedInfo };
                         childObj.css('left', left);
                         childObj.css('top', top);
@@ -695,6 +760,8 @@
                 }
                 _setCurrFocus(focus);
             }
+            container.attr('id', $ax.visibility.applyWidgetContainer(id)); // Setting the correct final id for the container
+            trapScroll();
         }
     };
 
@@ -704,6 +771,8 @@
         count--;
         containerCount[id] = count;
         if(count != 0) return;
+
+        var trapScroll = _trapScrollLoc(id);
 
         var jobj = $jobj(id);
         var container = $ax.visibility.applyWidgetContainer(id, true);
@@ -715,9 +784,10 @@
         container.css('width', size.width);
         container.css('height', size.height);
         var focus = _getCurrFocus();
+        if(focus) $ax.event.addSuppressedEvent($ax.repeater.removeSuffixFromElementId(focus), 'OnLostFocus');
         jobj.append(container.children());
         _setCurrFocus(focus);
-        $('body').append(container);
+        $('body').first().append(container);
 
         // Layer doesn't have children containers to clean up
         if(panel) {
@@ -743,14 +813,15 @@
                     _popContainer(childId, false);
                 } else {
                     var childObj = $jobj(childId);
-                //    if ($ax.public.fn.isCompoundVectorHtml(jobj[0])) {
-                //        var grandChildren = jobj[0].children;
-                //        //while (grandChildren.length > 0 && grandChildren[0].id.indexOf('container') >= 0) grandChildren = grandChildren[0].children;
-                //        for (var j = 0; j < grandChildren.length; j++) {
-                //            var grandChildId = grandChildren[j].id;
-                //            if (grandChildId.indexOf(childId + 'p') >= 0 || grandChildId.indexOf('_container') >= 0) $jobj(grandChildId).css(cssChange);
-                //        }
-                //} else
+                    //    if ($ax.public.fn.isCompoundVectorHtml(jobj[0])) {
+                    //        var grandChildren = jobj[0].children;
+                    //        //while (grandChildren.length > 0 && grandChildren[0].id.indexOf('container') >= 0) grandChildren = grandChildren[0].children;
+                    //        for (var j = 0; j < grandChildren.length; j++) {
+                    //            var grandChildId = grandChildren[j].id;
+                    //            if (grandChildId.indexOf(childId + 'p') >= 0 || grandChildId.indexOf('_container') >= 0) $jobj(grandChildId).css(cssChange);
+                    //        }
+                    //} else
+                    
                     var allObjs = $addAll(childObj, childId); // Just include other objects for initial css. Fixed panels need to be dealt with separately.
                     allObjs.css(cssChange);
 
@@ -789,7 +860,24 @@
             }
         }
         container.remove();
+        trapScroll();
     };
+
+    var _trapScrollLoc = function(id) {
+        var locs = {};
+        var states = $jobj(id).find('.panel_state');
+        for(var i = 0; i < states.length; i++) {
+            var state = $(states[i]);
+            locs[state.attr('id')] = { x: state.scrollLeft(), y: state.scrollTop() };
+        }
+        return function() {
+            for(var key in locs) {
+                var state = $jobj(key);
+                state.scrollLeft(locs[key].x);
+                state.scrollTop(locs[key].y);
+            }
+        };
+    }
 
     var _getCurrFocus = function () {
         // Only care about focused a tags and inputs
@@ -802,7 +890,12 @@
 
     var _setCurrFocus = function(id) {
         if(id) {
-            $jobj(id).focus();
+            // This is really just needed for IE, so if this causes issues on other browsers, try adding that check here
+            var trap = $ax.event.blockEvent($ax.repeater.removeSuffixFromElementId(id), 'OnFocus');
+            window.setTimeout(function () {
+                $jobj(id).focus();
+                trap();
+            }, 0);
         }
     }
 
@@ -831,6 +924,7 @@
             position: 'absolute',
             width: width,
             height: height,
+            display: 'flex'
         };
 
         if(!containerExists) {
@@ -844,6 +938,8 @@
             css.perspective = '800px';
             css.webkitPerspective = "800px";
             css.mozPerspective = "800px";
+            //adding this to make Edge happy
+            css['transform-style'] = 'preserve-3d';
         } else css.overflow = 'hidden';
 
         //perspective on container will give us 3d effect when flip
@@ -896,39 +992,41 @@
         return query;
     };
 
-    var _getFixedCss = function(css, rect, fixedInfo, isFullWidth) {
-        // todo: **mas** make sure this is ok
-        if(fixedInfo.fixed) {
-            css.position = 'fixed';
+    //var _getFixedCss = function(css, rect, fixedInfo, isFullWidth) {
+    //    // todo: **mas** make sure this is ok
+    //    if(fixedInfo.fixed) {
+    //        css.position = 'fixed';
 
-            if(fixedInfo.horizontal == 'left') css.left = fixedInfo.x;
-            else if(fixedInfo.horizontal == 'center') {
-                css.left = isFullWidth ? '0px' : '50%';
-                css['margin-left'] = fixedInfo.x;
-            } else if(fixedInfo.horizontal == 'right') {
-                css.left = 'auto';
-                css.right = fixedInfo.x;
-            }
+    //        if(fixedInfo.horizontal == 'left') css.left = fixedInfo.x;
+    //        else if(fixedInfo.horizontal == 'center') {
+    //            css.left = isFullWidth ? '0px' : '50%';
+    //            css['margin-left'] = fixedInfo.x;
+    //        } else if(fixedInfo.horizontal == 'right') {
+    //            css.left = 'auto';
+    //            css.right = fixedInfo.x;
+    //        }
 
-            if(fixedInfo.vertical == 'top') css.top = fixedInfo.y;
-            else if(fixedInfo.vertical == 'middle') {
-                css.top = '50%';
-                css['margin-top'] = fixedInfo.y;
-            } else if(fixedInfo.vertical == 'bottom') {
-                css.top = 'auto';
-                css.bottom = fixedInfo.y;
-            }
-        } else {
-            css.left = Number(rect.css('left').replace('px', '')) || 0;
-            css.top = Number(rect.css('top').replace('px', '')) || 0;
-        }
-    };
+    //        if(fixedInfo.vertical == 'top') css.top = fixedInfo.y;
+    //        else if(fixedInfo.vertical == 'middle') {
+    //            css.top = '50%';
+    //            css['margin-top'] = fixedInfo.y;
+    //        } else if(fixedInfo.vertical == 'bottom') {
+    //            css.top = 'auto';
+    //            css.bottom = fixedInfo.y;
+    //        }
+    //    } else {
+    //        css.left = Number(rect.css('left').replace('px', '')) || 0;
+    //        css.top = Number(rect.css('top').replace('px', '')) || 0;
+    //    }
+    //};
 
     var _slideStateOut = function (container, stateId, options, onComplete, jobj) {
         var directionOut = options.direction;
         var axObject = $ax('#' + container.attr('id'));
         var width = axObject.width();
         var height = axObject.height();
+
+        _blockSetMoveIds = true;
 
         if(directionOut == "right") {
             $ax.move.MoveWidget(stateId, width, 0, options, false, onComplete, false, jobj, true);
@@ -939,6 +1037,8 @@
         } else if(directionOut == "down") {
             $ax.move.MoveWidget(stateId, 0, height, options, false, onComplete, false, jobj, true);
         }
+
+        _blockSetMoveIds = false;
     };
 
     var _slideStateIn = function (id, stateId, options, container, makePanelVisible, onComplete, jobj, preserveScroll) {
@@ -947,10 +1047,13 @@
         var width = axObject.width();
         var height = axObject.height();
 
+        if (makePanelVisible) $ax.visibility.SetIdVisible(id, true);
+        for (i = 0; i < jobj.length; i++) $ax.visibility.SetVisible(jobj[i], true);
+
         for(var i = 0; i < jobj.length; i++) {
             var child = $(jobj[i]);
-            var oldTop = $ax.getNumFromPx(child.css('top'));
-            var oldLeft = $ax.getNumFromPx(child.css('left'));
+            var oldTop = $ax.getNumFromPx(fixAuto(child, 'top'));
+            var oldLeft = $ax.getNumFromPx(fixAuto(child, 'left'));
             if (directionIn == "right") {
                 child.css('left', oldLeft - width + 'px');
             } else if(directionIn == "left") {
@@ -962,10 +1065,10 @@
             }
         }
 
-        if (makePanelVisible) $ax.visibility.SetIdVisible(id, true);
-        for(i = 0; i < jobj.length; i++) $ax.visibility.SetIdVisible($(jobj[i]).attr('id'), true);
-
         if(preserveScroll) _tryResumeScrollForDP(id);
+
+        _blockSetMoveIds = true;
+
         if(directionIn == "right") {
             $ax.move.MoveWidget(stateId, width, 0, options, false, onComplete, false, jobj, true);
         } else if(directionIn == "left") {
@@ -975,6 +1078,8 @@
         } else if(directionIn == "down") {
             $ax.move.MoveWidget(stateId, 0, height, options, false, onComplete, false, jobj, true);
         }
+
+        _blockSetMoveIds = false;
     };
 
     $ax.visibility.GetPanelStateId = function(dpId, index) {
@@ -984,20 +1089,22 @@
     };
 
     $ax.visibility.GetPanelStateCount = function(id) {
-        return $ax.visibility.getRealChildren($jobj(id).children()).length;
+        return $ax.visibility.getRealChildren($jobj(id).children()).filter("[id*='_state']").length;
     };
 
-    var _bringPanelStateToFront = function (dpId, stateid) {
+    var _bringPanelStateToFront = function (dpId, stateId, oldStateId, oldInFront) {
         var panel = $jobj(dpId);
+        var frontId = oldInFront ? oldStateId : stateId;
         if(containerCount[dpId]) {
-            stateid = $ax.visibility.applyWidgetContainer(stateid);
+            frontId = $ax.visibility.applyWidgetContainer(frontId);
             panel = $ax.visibility.applyWidgetContainer(dpId, true, false, true);
         }
-        $jobj(stateid).appendTo(panel);
+        $jobj(frontId).appendTo(panel);
         //when bring a panel to front, it will be focused, and the previous front panel should fire blur event if it's lastFocusedClickableSelector
         //ie(currently 11) and firefox(currently 34) doesn't fire blur event, this is the hack to fire it manually
         if((IE || FIREFOX) && window.lastFocusedClickable && $ax.event.getFocusableWidgetOrChildId(window.lastFocusedControl) == window.lastFocusedClickable.id) {
-            $(window.lastFocusedClickable).triggerHandler('blur');
+            // Only need to do this if the currently focused widget is in the panel state that is being hidden.
+            if($jobj(oldStateId).find('#' + window.lastFocusedClickable.id.split('_')[0]).length) $(window.lastFocusedClickable).triggerHandler('blur');
         }
     };
 
@@ -1080,6 +1187,77 @@
         }
         return false;
     }
+
+    var _blockSetMoveIds = false;
+    var _movedIds = _visibility.movedIds = {};
+    var _resizedIds = _visibility.resizedIds = {};
+    var _rotatedIds = _visibility.rotatedIds = {};
+
+    $ax.visibility.getMovedLocation = function(scriptId) {
+        return _movedIds[scriptId];
+
+        //var repeater = $ax.getParentRepeaterFromScriptId(scriptId);
+        //if (!repeater) return false;
+
+        //var itemId = $ax.getItemIdsForRepeater(repeater)[0];
+        //return _movedIds[$ax.repeater.createElementId(scriptId, itemId)];
+    };
+
+    $ax.visibility.setMovedLocation = function (scriptId, left, top) {
+        if ($jobj(scriptId).css('position') == 'fixed') return;
+        _movedIds[scriptId] = { left: left, top: top };
+    };
+
+    $ax.visibility.moveMovedLocation = function (scriptId, deltaLeft, deltaTop) {
+        if(_blockSetMoveIds) return false;
+
+        var offsetLocation = $ax('#' + scriptId).offsetLocation();
+        $ax.visibility.setMovedLocation(scriptId, offsetLocation.x + deltaLeft, offsetLocation.y + deltaTop);
+
+        if($ax.getTypeFromElementId(scriptId) == $ax.constants.LAYER_TYPE) {
+            var childIds = $ax('#' + scriptId).getChildren()[0].children;
+            for (var i = 0; i < childIds.length; i++) {
+                $ax.visibility.moveMovedLocation(childIds[i], deltaLeft, deltaTop);
+            }
+        }
+    };
+
+    $ax.visibility.getResizedSize = function(scriptId) {
+        return _resizedIds[scriptId];
+
+        //var repeater = $ax.getParentRepeaterFromScriptId(scriptId);
+        //if (!repeater) return false;
+
+        //var itemId = $ax.getItemIdsForRepeater(repeater)[0];
+        //return _resizedIds[$ax.repeater.createElementId(scriptId, itemId)];
+    };
+
+    $ax.visibility.setResizedSize = function(scriptId, width, height) {
+        _resizedIds[scriptId] = { width: width, height: height };
+    };
+
+    $ax.visibility.getRotatedAngle = function (scriptId) {
+        return _rotatedIds[scriptId];
+    };
+
+    $ax.visibility.setRotatedAngle = function (scriptId, rotation) {
+        _rotatedIds[scriptId] = rotation;
+    };
+
+    $ax.visibility.clearMovedAndResized = function () {
+        _movedIds = _visibility.movedIds = {};
+        _resizedIds = _visibility.resizedIds = {};
+        _rotatedIds = _visibility.rotatedIds = {};
+    };
+
+    $ax.visibility.clearMovedAndResizedIds = function (elementIds) {
+        for (var i = 0; i < elementIds.length; i++) {
+            var id = elementIds[i];
+            delete _movedIds[id];
+            delete _resizedIds[id];
+            delete _rotatedIds[id];
+        }
+    };
 
     $ax.visibility.initialize = function() {
         // initialize initial visible states
