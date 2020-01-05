@@ -92,7 +92,12 @@
 .html_button {
   text-align:center;
 }
+.tree_node {
+  text-align:left;
+}
 .table_cell {
+}
+.menu_item {
 }
 .connector {
   font-family:'Arial Normal', 'Arial';
